@@ -1,4 +1,7 @@
+'''Usage: parse.py <input-bin-dict> <output-tsv>'''
+
 import struct
+import sys
 
 class KeyItem(object):
     datatype_size = [4,1,1,2,1,2,2,4,4,8,4,4,4,0,0,0]
@@ -218,7 +221,8 @@ class BaseDict(object):
         assert offset <= header.datasize
         if header.used_datasize > 0:
             if not offset <= header.used_datasize:
-                print(f'GetData overflow data_id: {data_id} offset: {offset} header [ used: {header.used_datasize} size: {header.datasize} ]')
+                print(f'GetData overflow data_id: {data_id} offset: {offset} '
+                      f'header [ used: {header.used_datasize} size: {header.datasize} ]')
         datastore = self.GetDataStore(data_id)
         return datastore.subview(offset)
 
@@ -282,126 +286,136 @@ def ReadUint32(b):
 def ReadUint16(b):
     return struct.unpack('<H', b.read(2))[0]
 
-filedata = open('dict.bin', 'rb').read()
-size = len(filedata)
-f = DataView(filedata)
 
-file_chksum = ReadUint32(f)
-uint_4 = ReadUint32(f)
-uint_8 = ReadUint32(f)
-uint_12 = ReadUint32(f)
-uint_16 = ReadUint32(f)
+if __name__ == '__main__':
+    in_path = sys.argv[1]
+    out_path = sys.argv[2]
 
-print('uint0-16:', file_chksum, uint_4, uint_8, uint_12, uint_16)
-config_size = uint_4
-chksum = uint_4 + uint_8 + uint_12 + uint_16
+    with open(in_path, 'rb') as fin:
+        filedata = fin.read()
+    size = len(filedata)
+    f = DataView(filedata)
 
-assert 0 <= uint_4 <= size
+    # File header
+    file_chksum = ReadUint32(f)
+    uint_4 = ReadUint32(f)
+    uint_8 = ReadUint32(f)
+    uint_12 = ReadUint32(f)
+    uint_16 = ReadUint32(f)
 
-f2 = DataView(filedata, uint_4 + 8)
-f_s8 = DataView(filedata, 20)
-pos_2 = uint_4 + 8
+    print('uint0-16:', file_chksum, uint_4, uint_8, uint_12, uint_16)
+    config_size = uint_4
+    chksum = uint_4 + uint_8 + uint_12 + uint_16
 
-key_items = []
-if uint_8 > 0:
-    # parse section 8
-    for i in range(uint_8):
-        key = KeyItem()
-        key.dict_typedef = ReadUint16(f_s8)
-        assert key.dict_typedef < 100
-        num_datatype = ReadUint16(f_s8)
-        if num_datatype > 0:
-            for _ in range(num_datatype):
-                datatype = ReadUint16(f_s8)
-                key.datatype.append(datatype)
-        key.attr_idx = ReadUint32(f_s8)
-        key.key_data_idx = ReadUint32(f_s8)
-        key.data_idx = ReadUint32(f_s8)
-        key.v6 = ReadUint32(f_s8)
-        # ??? key.dict_typedef = ReadUint32(f_s8)
-        key_items.append(key)
+    assert 0 <= uint_4 <= size
 
-attr_items = []
-if uint_12 > 0:
-    for _ in range(uint_12):
-        attr = AttributeItem()
-        attr.count = ReadUint32(f_s8)
-        attr.a2 = ReadUint32(f_s8)
-        attr.data_id = ReadUint32(f_s8)
-        attr.b2 = ReadUint32(f_s8)
-        attr_items.append(attr)
+    f2 = DataView(filedata, uint_4 + 8)
+    f_s8 = DataView(filedata, 20)
+    pos_2 = uint_4 + 8
 
-aint_items = []
-if uint_16 > 0:
-    for _ in range(uint_16):
-        aint = ReadUint32(f_s8)
-        aint_items.append(aint)
+    key_items = []
+    if uint_8 > 0:
+        # Parse config
+        for i in range(uint_8):
+            key = KeyItem()
+            key.dict_typedef = ReadUint16(f_s8)
+            assert key.dict_typedef < 100
+            num_datatype = ReadUint16(f_s8)
+            if num_datatype > 0:
+                for _ in range(num_datatype):
+                    datatype = ReadUint16(f_s8)
+                    key.datatype.append(datatype)
+            key.attr_idx = ReadUint32(f_s8)
+            key.key_data_idx = ReadUint32(f_s8)
+            key.data_idx = ReadUint32(f_s8)
+            key.v6 = ReadUint32(f_s8)
+            # ??? key.dict_typedef = ReadUint32(f_s8)
+            key_items.append(key)
 
-assert f_s8.pos == f2.pos  # all the sec8 data has been processed
+    attr_items = []
+    if uint_12 > 0:
+        for _ in range(uint_12):
+            attr = AttributeItem()
+            attr.count = ReadUint32(f_s8)
+            attr.a2 = ReadUint32(f_s8)
+            attr.data_id = ReadUint32(f_s8)
+            attr.b2 = ReadUint32(f_s8)
+            attr_items.append(attr)
 
-base_dict = BaseDict()
-base_dict.key = key_items
-base_dict.attr = attr_items
-base_dict.aint = aint_items
-base_dict.init()
+    aint_items = []
+    if uint_16 > 0:
+        for _ in range(uint_16):
+            aint = ReadUint32(f_s8)
+            aint_items.append(aint)
 
-header_size = 12 * (len(base_dict.attr) + len(base_dict.aint) + len(base_dict.key)) + 24
+    assert f_s8.pos == f2.pos  # all the sec8 data has been processed
 
-b2_version = ReadUint32(f2)
-b2_format = ReadUint32(f2)
-print(f'version:{b2_version} format:{b2_format}')
+    usrdict = BaseDict()
+    usrdict.key = key_items
+    usrdict.attr = attr_items
+    usrdict.aint = aint_items
+    usrdict.init()
 
-total_size = ReadUint32(f2)
-USR_DICT_HEADER_SIZE = 4 + 76
-assert total_size > 0 and total_size + header_size + config_size + 8 == size - USR_DICT_HEADER_SIZE # assert buff2.1
+    header_size = 12 * (len(usrdict.attr) + len(usrdict.aint) + len(usrdict.key)) + 24
 
-size3_b2 = ReadUint32(f2)
-size4_b2 = ReadUint32(f2)
-size5_b2 = ReadUint32(f2)
-print('header size:', total_size, size3_b2, size4_b2, size5_b2)
+    b2_version = ReadUint32(f2)
+    b2_format = ReadUint32(f2)
+    print(f'version:{b2_version} format:{b2_format}')
 
-header_items_index = []
-for _ in range(size3_b2):
-    header = HeaderItem()
-    header.parse(f2)
-    chksum += header.offset + header.datasize + header.used_datasize
-    header_items_index.append(header)
-base_dict.header_index = header_items_index
+    total_size = ReadUint32(f2)
+    USR_DICT_HEADER_SIZE = 4 + 76
+    assert total_size > 0 and total_size + header_size + config_size + 8 == size - USR_DICT_HEADER_SIZE # assert buff2.1
 
-header_items_attr = []
-for _ in range(size4_b2):
-    header = HeaderItem()
-    header.parse(f2)
-    chksum += header.offset + header.datasize + header.used_datasize
-    header_items_attr.append(header)
-base_dict.header_attr = header_items_attr
+    size3_b2 = ReadUint32(f2)
+    size4_b2 = ReadUint32(f2)
+    size5_b2 = ReadUint32(f2)
+    print('header size:', total_size, size3_b2, size4_b2, size5_b2)
 
-datastore_items = []
-for _ in range(size5_b2):
-    header = HeaderItem()
-    header.parse(f2)
-    chksum += header.offset + header.datasize + header.used_datasize
-    datastore_items.append(header)
-base_dict.datastore = datastore_items
+    header_items_index = []
+    for _ in range(size3_b2):
+        header = HeaderItem()
+        header.parse(f2)
+        chksum += header.offset + header.datasize + header.used_datasize
+        header_items_index.append(header)
+    usrdict.header_index = header_items_index
 
-base_dict.ds_base = f2
-assert pos_2 + header_size == f2.pos
-    
-# User Header
-f_usr = DataView(filedata, size - 0x4c)
-usr_header = UserHeader()
-usr_header.parse(f_usr)
+    header_items_attr = []
+    for _ in range(size4_b2):
+        header = HeaderItem()
+        header.parse(f2)
+        chksum += header.offset + header.datasize + header.used_datasize
+        header_items_attr.append(header)
+    usrdict.header_attr = header_items_attr
 
-# Read all words
-all_data = base_dict.GetAllDataWithAttri(0)
-for attr, attr2 in all_data:
-    py = base_dict.GetPys(attr.offset_of(base_dict.ds_base))
-    word_info = AttrWordData()
-    word_info.parse(attr2.subview())
-    # GetWordData
-    attr_id = base_dict.key[0].attr_idx
-    data_id = base_dict.GetDataIdByAttriId(attr_id)
-    word_base = base_dict.GetData(data_id, word_info.offset)
-    # DecryptWordsEx
-    word = DecryptWordsEx(word_base, word_info.p1, usr_header.p2, usr_header.p3)
-    print(f'{word.string}\t{word_info.freq}')
+    datastore_items = []
+    for _ in range(size5_b2):
+        header = HeaderItem()
+        header.parse(f2)
+        chksum += header.offset + header.datasize + header.used_datasize
+        datastore_items.append(header)
+    usrdict.datastore = datastore_items
+
+    usrdict.ds_base = f2
+    assert pos_2 + header_size == f2.pos
+        
+    # User Header
+    f_usr = DataView(filedata, size - 0x4c)
+    usr_header = UserHeader()
+    usr_header.parse(f_usr)
+
+    # Read all words
+    fout = open(out_path, 'w')
+    all_data = usrdict.GetAllDataWithAttri(0)
+    for attr, attr2 in all_data:
+        py = usrdict.GetPys(attr.offset_of(usrdict.ds_base))
+        word_info = AttrWordData()
+        word_info.parse(attr2.subview())
+        # GetWordData
+        attr_id = usrdict.key[0].attr_idx
+        data_id = usrdict.GetDataIdByAttriId(attr_id)
+        word_base = usrdict.GetData(data_id, word_info.offset)
+        # DecryptWordsEx
+        word = DecryptWordsEx(word_base, word_info.p1, usr_header.p2, usr_header.p3)
+        fout.write(f'{word.string}\t{word_info.freq}\n')
+        fout.flush()
+    fout.close()
