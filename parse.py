@@ -7,8 +7,8 @@ class KeyItem(object):
         self.dict_typedef = 0
         self.datatype = []
         self.attr_idx = 0
-        self.v4 = 0
-        self.v5 = 0
+        self.key_data_idx = 0
+        self.data_idx = 0
         self.v6 = 0        
 
 class HeaderItem(object):
@@ -33,12 +33,57 @@ class HashStore(object):
         self.offset = readUint32(f)
         self.count = readUint32(f)
 
+class LString(object):
+    def __init__(self):
+        self.size = 0
+        self.data = None
+        self.string = None
+
+    def __str__(self):
+        if self.size == 0:
+            return 'LString(empty)'
+        else:
+            return f'LString(size={self.size}, string="{self.string}")'
+    
+    def parse(self, f):
+        self.size = readUint16(f)
+        self.data = f.read(self.size)
+        self.string = self.data.decode('utf-16')
+
+class AttrWordData(object):
+    def __init__(self):
+        self.offset = 0
+        self.freq = 0
+        self.aflag = 0
+        self.i8 = 0
+        self.p1 = 0
+        self.iE = 0
+    
+    def parse(self, f):
+        self.offset = readUint32(f)
+        self.freq = readUint16(f)
+        self.aflag = readUint16(f)
+        self.i8 = readUint32(f)
+        self.p1 = readUint16(f)
+        self.iE = readInt32(f)  # always zero
+        _ = readInt32(f)  # next offset
+
 ''' Dict Structure
 key -> attrId        attr_store[data]
         -> dataId  ds[data]
     -> keyDataId   ds[data]
     -> dataId      ds[data]
 '''
+
+class UserHeader(object):
+    def __init__(self):
+        self.p2 = 0
+        self.p3 = 0
+
+    def parse(self, f):
+        uints = [readUint32(f) for _ in range(19)]
+        self.p2 = uints[14]
+        self.p3 = uints[15]
 
 class BaseDict(object):
     datatype_hash_size = [0, 27, 414, 512, -1, -1, 512, 0]
@@ -147,8 +192,7 @@ class BaseDict(object):
             for attr_id in range(hashstore.count):
                 attr_base = self.GetAttriFromIndex(key_id, attr_id, hashstore.offset)
                 offset = readUint32(attr_base.subview(self.datatype_size[key_id] - 4))
-                print(f'attr_id: {attr_id} offset: {offset}')
-                # input()
+                # print(f'attr_id: {attr_id} offset: {offset}')
                 for attr2_id in range(num_attr):
                     attr2_base = self.GetAttriFromAttri(key_id, offset)
                     if attr2_base is None:
@@ -156,11 +200,50 @@ class BaseDict(object):
                         break
                     results.append((attr_base, attr2_base))
                     offset = readInt32(attr2_base.subview(self.attr_size[key.attr_idx] - 4))
-                    print(f'attr2_id: {attr2_id} new offset: {offset}')
+                    # print(f'attr2_id: {attr2_id} new offset: {offset}')
                     if offset == -1:
                         break
         return results
-            
+
+    def GetDataStore(self, data_id):
+        return self.ds_base.subview(self.datastore[data_id].offset)
+
+    def GetData(self, data_id, offset):
+        header = self.datastore[data_id]
+        assert offset <= header.datasize
+        if header.used_datasize > 0:
+            if not offset <= header.used_datasize:
+                print(f'GetData overflow data_id: {data_id} offset: {offset} header [ used: {header.used_datasize} size: {header.datasize} ]')
+        datastore = self.GetDataStore(data_id)
+        return datastore.subview(offset)
+
+    def GetPys(self, offset):
+        data_id = self.key[0].key_data_idx
+        return self.GetData(data_id, offset)
+
+    def GetDataIdByAttriId(self, attr_id):
+        return self.attr[attr_id].data_id
+
+
+def DecryptWordsEx(lstr_dataview, p1, p2, p3):
+    lstr = lstr_dataview.subview()
+    k1 = (p1 + p2) << 2
+    k2 = (p1 + p3) << 2
+    xk = (k1 + k2) & 0xffff
+    n = readUint16(lstr) // 2
+    decwords = b''
+    for _ in range(n):
+        shift = p2 % 8
+        ch = readUint16(lstr)
+        dch = (ch << (16 - (shift % 8)) | (ch >> shift)) & 0xffff
+        dch ^= xk
+        decwords += struct.pack('<H', dch)
+    dec_lstr = LString()
+    dec_lstr.size = n * 2
+    dec_lstr.data = decwords
+    dec_lstr.string = decwords.decode('utf-16')
+    return dec_lstr
+
 
 class DataView(object):
     def __init__(self, buff, pos=0):
@@ -180,6 +263,10 @@ class DataView(object):
 
     def subview(self, off=0):
         return DataView(self.buff, self.pos + off)
+
+    def offset_of(self, base):
+        assert base.buff == self.buff
+        return self.pos - base.pos
 
 def readInt32(b):
     return struct.unpack('<i', b.read(4))[0]
@@ -223,9 +310,10 @@ if uint_8 > 0:
                 datatype = readUint16(f_s8)
                 key.datatype.append(datatype)
         key.attr_idx = readUint32(f_s8)
-        key.v4 = readUint32(f_s8)
-        key.v5 = readUint32(f_s8)
+        key.key_data_idx = readUint32(f_s8)
+        key.data_idx = readUint32(f_s8)
         key.v6 = readUint32(f_s8)
+        # ??? key.dict_typedef = readUint32(f_s8)
         key_items.append(key)
 
 attr_items = []
@@ -301,12 +389,24 @@ base_dict.datastore = datastore_items
 
 base_dict.ds_base = f2
 assert pos_2 + header_size == f2.pos
+    
+# User Header
+f_usr = DataView(filedata, size - 0x4c)
+usr_header = UserHeader()
+usr_header.parse(f_usr)
 
-# for i in range(len(base_dict.key)):
-#     pos = base_dict.get_hash_offset(i)
-#     item = base_dict.ds_base[pos] 
-
-
+all_data = base_dict.GetAllDataWithAttri(0)
+for attr, attr2 in all_data:
+    py = base_dict.GetPys(attr.offset_of(base_dict.ds_base))
+    word_info = AttrWordData()
+    word_info.parse(attr2.subview())
+    # GetWordData
+    attr_id = base_dict.key[0].attr_idx
+    data_id = base_dict.GetDataIdByAttriId(attr_id)
+    word_base = base_dict.GetData(data_id, word_info.offset)
+    # DecryptWordsEx
+    word = DecryptWordsEx(word_base, word_info.p1, usr_header.p2, usr_header.p3)
+    print(f'{word.string}\t{word_info.freq}')
 
 # base_dict
 # base_dict.header = 
