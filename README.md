@@ -1,7 +1,12 @@
-# Sogou User Dict Converter
+# Sogou-User-Dict-Converter
 
-A tool to extract and decrypt the user dictionary file from Sogou IME. It rescues your data from
-Sogou's evil hands.
+A tool to extract and decrypt the user dictionary (so called "usrDictV3") file from Sogou IME.
+Sogou shouldn't hold your data while disallowing you to access the data. This tool rescues your data
+from Sogou's evil hands.
+
+## Licence
+
+GPLv3
 
 ## Requirements
 
