@@ -18,9 +18,9 @@ class HeaderItem(object):
         self.used_datasize = 0
     
     def parse(self, f):
-        self.offset = readUint32(f)
-        self.datasize = readUint32(f)
-        self.used_datasize = readUint32(f)
+        self.offset = ReadUint32(f)
+        self.datasize = ReadUint32(f)
+        self.used_datasize = ReadUint32(f)
 
 class AttributeItem(object):
     def __init__(self):
@@ -35,8 +35,8 @@ class HashStore(object):
         self.count = 0
 
     def parse(self, f):
-        self.offset = readUint32(f)
-        self.count = readUint32(f)
+        self.offset = ReadUint32(f)
+        self.count = ReadUint32(f)
 
 class LString(object):
     def __init__(self):
@@ -51,7 +51,7 @@ class LString(object):
             return f'LString(size={self.size}, string="{self.string}")'
     
     def parse(self, f):
-        self.size = readUint16(f)
+        self.size = ReadUint16(f)
         self.data = f.read(self.size)
         self.string = self.data.decode('utf-16')
 
@@ -65,13 +65,13 @@ class AttrWordData(object):
         self.iE = 0
     
     def parse(self, f):
-        self.offset = readUint32(f)
-        self.freq = readUint16(f)
-        self.aflag = readUint16(f)
-        self.i8 = readUint32(f)
-        self.p1 = readUint16(f)
-        self.iE = readInt32(f)  # always zero
-        _ = readInt32(f)  # next offset
+        self.offset = ReadUint32(f)
+        self.freq = ReadUint16(f)
+        self.aflag = ReadUint16(f)
+        self.i8 = ReadUint32(f)
+        self.p1 = ReadUint16(f)
+        self.iE = ReadInt32(f)  # always zero
+        _ = ReadInt32(f)  # next offset
 
 ''' Dict Structure
 key -> attrId        attr_store[data]
@@ -86,7 +86,7 @@ class UserHeader(object):
         self.p3 = 0
 
     def parse(self, f):
-        uints = [readUint32(f) for _ in range(19)]
+        uints = [ReadUint32(f) for _ in range(19)]
         self.p2 = uints[14]
         self.p3 = uints[15]
 
@@ -196,7 +196,7 @@ class BaseDict(object):
             print(f'hashstore [ offset: {hashstore.offset}, count: {hashstore.count} ]')
             for attr_id in range(hashstore.count):
                 attr_base = self.GetAttriFromIndex(key_id, attr_id, hashstore.offset)
-                offset = readUint32(attr_base.subview(self.datatype_size[key_id] - 4))
+                offset = ReadUint32(attr_base.subview(self.datatype_size[key_id] - 4))
                 # print(f'attr_id: {attr_id} offset: {offset}')
                 for attr2_id in range(num_attr):
                     attr2_base = self.GetAttriFromAttri(key_id, offset)
@@ -204,7 +204,7 @@ class BaseDict(object):
                         print(f'attr2 out of range (offset: {offset})')
                         break
                     results.append((attr_base, attr2_base))
-                    offset = readInt32(attr2_base.subview(self.attr_size[key.attr_idx] - 4))
+                    offset = ReadInt32(attr2_base.subview(self.attr_size[key.attr_idx] - 4))
                     # print(f'attr2_id: {attr2_id} new offset: {offset}')
                     if offset == -1:
                         break
@@ -235,11 +235,11 @@ def DecryptWordsEx(lstr_dataview, p1, p2, p3):
     k1 = (p1 + p2) << 2
     k2 = (p1 + p3) << 2
     xk = (k1 + k2) & 0xffff
-    n = readUint16(lstr) // 2
+    n = ReadUint16(lstr) // 2
     decwords = b''
     for _ in range(n):
         shift = p2 % 8
-        ch = readUint16(lstr)
+        ch = ReadUint16(lstr)
         dch = (ch << (16 - (shift % 8)) | (ch >> shift)) & 0xffff
         dch ^= xk
         decwords += struct.pack('<H', dch)
@@ -273,24 +273,24 @@ class DataView(object):
         assert base.buff == self.buff
         return self.pos - base.pos
 
-def readInt32(b):
+def ReadInt32(b):
     return struct.unpack('<i', b.read(4))[0]
 
-def readUint32(b):
+def ReadUint32(b):
     return struct.unpack('<I', b.read(4))[0]
 
-def readUint16(b):
+def ReadUint16(b):
     return struct.unpack('<H', b.read(2))[0]
 
 filedata = open('dict.bin', 'rb').read()
 size = len(filedata)
 f = DataView(filedata)
 
-file_chksum = readUint32(f)
-uint_4 = readUint32(f)
-uint_8 = readUint32(f)
-uint_12 = readUint32(f)
-uint_16 = readUint32(f)
+file_chksum = ReadUint32(f)
+uint_4 = ReadUint32(f)
+uint_8 = ReadUint32(f)
+uint_12 = ReadUint32(f)
+uint_16 = ReadUint32(f)
 
 print('uint0-16:', file_chksum, uint_4, uint_8, uint_12, uint_16)
 config_size = uint_4
@@ -307,34 +307,34 @@ if uint_8 > 0:
     # parse section 8
     for i in range(uint_8):
         key = KeyItem()
-        key.dict_typedef = readUint16(f_s8)
+        key.dict_typedef = ReadUint16(f_s8)
         assert key.dict_typedef < 100
-        num_datatype = readUint16(f_s8)
+        num_datatype = ReadUint16(f_s8)
         if num_datatype > 0:
             for _ in range(num_datatype):
-                datatype = readUint16(f_s8)
+                datatype = ReadUint16(f_s8)
                 key.datatype.append(datatype)
-        key.attr_idx = readUint32(f_s8)
-        key.key_data_idx = readUint32(f_s8)
-        key.data_idx = readUint32(f_s8)
-        key.v6 = readUint32(f_s8)
-        # ??? key.dict_typedef = readUint32(f_s8)
+        key.attr_idx = ReadUint32(f_s8)
+        key.key_data_idx = ReadUint32(f_s8)
+        key.data_idx = ReadUint32(f_s8)
+        key.v6 = ReadUint32(f_s8)
+        # ??? key.dict_typedef = ReadUint32(f_s8)
         key_items.append(key)
 
 attr_items = []
 if uint_12 > 0:
     for _ in range(uint_12):
         attr = AttributeItem()
-        attr.count = readUint32(f_s8)
-        attr.a2 = readUint32(f_s8)
-        attr.data_id = readUint32(f_s8)
-        attr.b2 = readUint32(f_s8)
+        attr.count = ReadUint32(f_s8)
+        attr.a2 = ReadUint32(f_s8)
+        attr.data_id = ReadUint32(f_s8)
+        attr.b2 = ReadUint32(f_s8)
         attr_items.append(attr)
 
 aint_items = []
 if uint_16 > 0:
     for _ in range(uint_16):
-        aint = readUint32(f_s8)
+        aint = ReadUint32(f_s8)
         aint_items.append(aint)
 
 assert f_s8.pos == f2.pos  # all the sec8 data has been processed
@@ -347,17 +347,17 @@ base_dict.init()
 
 header_size = 12 * (len(base_dict.attr) + len(base_dict.aint) + len(base_dict.key)) + 24
 
-b2_version = readUint32(f2)
-b2_format = readUint32(f2)
+b2_version = ReadUint32(f2)
+b2_format = ReadUint32(f2)
 print(f'version:{b2_version} format:{b2_format}')
 
-total_size = readUint32(f2)
+total_size = ReadUint32(f2)
 USR_DICT_HEADER_SIZE = 4 + 76
 assert total_size > 0 and total_size + header_size + config_size + 8 == size - USR_DICT_HEADER_SIZE # assert buff2.1
 
-size3_b2 = readUint32(f2)
-size4_b2 = readUint32(f2)
-size5_b2 = readUint32(f2)
+size3_b2 = ReadUint32(f2)
+size4_b2 = ReadUint32(f2)
+size5_b2 = ReadUint32(f2)
 print('header size:', total_size, size3_b2, size4_b2, size5_b2)
 
 header_items_index = []
@@ -392,6 +392,7 @@ f_usr = DataView(filedata, size - 0x4c)
 usr_header = UserHeader()
 usr_header.parse(f_usr)
 
+# Read all words
 all_data = base_dict.GetAllDataWithAttri(0)
 for attr, attr2 in all_data:
     py = base_dict.GetPys(attr.offset_of(base_dict.ds_base))
