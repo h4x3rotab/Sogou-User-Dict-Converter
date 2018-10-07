@@ -16,6 +16,11 @@ class HeaderItem(object):
         self.offset = 0
         self.datasize = 0
         self.used_datasize = 0
+    
+    def parse(self, f):
+        self.offset = readUint32(f)
+        self.datasize = readUint32(f)
+        self.used_datasize = readUint32(f)
 
 class AttributeItem(object):
     def __init__(self):
@@ -353,16 +358,12 @@ assert total_size > 0 and total_size + header_size + config_size + 8 == size - U
 size3_b2 = readUint32(f2)
 size4_b2 = readUint32(f2)
 size5_b2 = readUint32(f2)
-#b2_n = size3_b2 + size4_b2 + size5_b2
-# assert b2_n * 12 + 24 == some_size
 print('header size:', total_size, size3_b2, size4_b2, size5_b2)
 
 header_items_index = []
 for _ in range(size3_b2):
     header = HeaderItem()
-    header.offset = readUint32(f2)
-    header.datasize = readUint32(f2)
-    header.used_datasize = readUint32(f2)
+    header.parse(f2)
     chksum += header.offset + header.datasize + header.used_datasize
     header_items_index.append(header)
 base_dict.header_index = header_items_index
@@ -370,9 +371,7 @@ base_dict.header_index = header_items_index
 header_items_attr = []
 for _ in range(size4_b2):
     header = HeaderItem()
-    header.offset = readUint32(f2)
-    header.datasize = readUint32(f2)
-    header.used_datasize = readUint32(f2)
+    header.parse(f2)
     chksum += header.offset + header.datasize + header.used_datasize
     header_items_attr.append(header)
 base_dict.header_attr = header_items_attr
@@ -380,9 +379,7 @@ base_dict.header_attr = header_items_attr
 datastore_items = []
 for _ in range(size5_b2):
     header = HeaderItem()
-    header.offset = readUint32(f2)
-    header.datasize = readUint32(f2)
-    header.used_datasize = readUint32(f2)
+    header.parse(f2)
     chksum += header.offset + header.datasize + header.used_datasize
     datastore_items.append(header)
 base_dict.datastore = datastore_items
@@ -407,7 +404,3 @@ for attr, attr2 in all_data:
     # DecryptWordsEx
     word = DecryptWordsEx(word_base, word_info.p1, usr_header.p2, usr_header.p3)
     print(f'{word.string}\t{word_info.freq}')
-
-# base_dict
-# base_dict.header = 
-
