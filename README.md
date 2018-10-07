@@ -4,9 +4,9 @@ A tool to extract and decrypt the user dictionary (so called "usrDictV3") file f
 Sogou shouldn't hold your data while disallowing you to access the data. This tool rescues your data
 from Sogou's evil hands.
 
-## Licence
+## License
 
-GPLv3
+This software is released under the terms of [GPLv3 license](https://www.gnu.org/licenses/gpl-3.0.html).
 
 ## Requirements
 
