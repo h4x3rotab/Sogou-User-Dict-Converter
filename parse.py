@@ -3,8 +3,9 @@
 import struct
 import sys
 
+
 class KeyItem(object):
-    datatype_size = [4,1,1,2,1,2,2,4,4,8,4,4,4,0,0,0]
+    datatype_size = [4, 1, 1, 2, 1, 2, 2, 4, 4, 8, 4, 4, 4, 0, 0, 0]
 
     def __init__(self):
         self.dict_typedef = 0
@@ -12,18 +13,20 @@ class KeyItem(object):
         self.attr_idx = 0
         self.key_data_idx = 0
         self.data_idx = 0
-        self.v6 = 0        
+        self.v6 = 0
+
 
 class HeaderItem(object):
     def __init__(self):
         self.offset = 0
         self.datasize = 0
         self.used_datasize = 0
-    
+
     def parse(self, f):
         self.offset = ReadUint32(f)
         self.datasize = ReadUint32(f)
         self.used_datasize = ReadUint32(f)
+
 
 class AttributeItem(object):
     def __init__(self):
@@ -31,6 +34,7 @@ class AttributeItem(object):
         self.a2 = 0
         self.data_id = 0
         self.b2 = 0
+
 
 class HashStore(object):
     def __init__(self):
@@ -40,6 +44,7 @@ class HashStore(object):
     def parse(self, f):
         self.offset = ReadUint32(f)
         self.count = ReadUint32(f)
+
 
 class LString(object):
     def __init__(self):
@@ -52,11 +57,12 @@ class LString(object):
             return 'LString(empty)'
         else:
             return f'LString(size={self.size}, string="{self.string}")'
-    
+
     def parse(self, f):
         self.size = ReadUint16(f)
         self.data = f.read(self.size)
         self.string = self.data.decode('utf-16')
+
 
 class AttrWordData(object):
     def __init__(self):
@@ -66,7 +72,7 @@ class AttrWordData(object):
         self.i8 = 0
         self.p1 = 0
         self.iE = 0
-    
+
     def parse(self, f):
         self.offset = ReadUint32(f)
         self.freq = ReadUint16(f)
@@ -76,12 +82,14 @@ class AttrWordData(object):
         self.iE = ReadInt32(f)  # always zero
         _ = ReadInt32(f)  # next offset
 
+
 ''' Dict Structure
 key -> attrId        attr_store[data]
         -> dataId  ds[data]
     -> keyDataId   ds[data]
     -> dataId      ds[data]
 '''
+
 
 class UserHeader(object):
     def __init__(self):
@@ -92,6 +100,7 @@ class UserHeader(object):
         uints = [ReadUint32(f) for _ in range(19)]
         self.p2 = uints[14]
         self.p3 = uints[15]
+
 
 class BaseDict(object):
     datatype_hash_size = [0, 27, 414, 512, -1, -1, 512, 0]
@@ -107,7 +116,7 @@ class BaseDict(object):
         self.datatype_size = None
         self.attr_size = None
         self.base_hash_size = None
-        self.key_hash_size = [0]*10
+        self.key_hash_size = [0] * 10
         self.aflag = False
         if corev3:  # t_usrDictV3Core::t_usrDictV3Core
             self.key_hash_size[0] = 500
@@ -218,7 +227,7 @@ class BaseDict(object):
 
     def GetData(self, data_id, offset):
         header = self.datastore[data_id]
-        assert offset <= header.datasize
+        # assert offset <= header.datasize
         if header.used_datasize > 0:
             if not offset <= header.used_datasize:
                 print(f'GetData overflow data_id: {data_id} offset: {offset} '
@@ -234,6 +243,48 @@ class BaseDict(object):
         return self.attr[attr_id].data_id
 
 
+pinyin = ['a', 'ai', 'an', 'ang', 'ao', 'ba', 'bai', 'ban', 'bang', 'bao', 'bei', 'ben', 'beng', 'bi', 'bian', 'biao',
+          'bie', 'bin', 'bing', 'bo', 'bu', 'ca', 'cai', 'can', 'cang', 'cao', 'ce', 'cen', 'ceng', 'cha', 'chai',
+          'chan', 'chang', 'chao', 'che', 'chen', 'cheng', 'chi', 'chong', 'chou', 'chu', 'chua', 'chuai', 'chuan',
+          'chuang', 'chui', 'chun', 'chuo', 'ci', 'cong', 'cou', 'cu', 'cuan', 'cui', 'cun', 'cuo', 'da', 'dai', 'dan',
+          'dang', 'dao', 'de', 'dei', 'den', 'deng', 'di', 'dia', 'dian', 'diao', 'die', 'ding', 'diu', 'dong', 'dou',
+          'du', 'duan', 'dui', 'dun', 'duo', 'e', 'ei', 'en', 'eng', 'er', 'fa', 'fan', 'fang', 'fei', 'fen', 'feng',
+          'fiao', 'fo', 'fou', 'fu', 'ga', 'gai', 'gan', 'gang', 'gao', 'ge', 'gei', 'gen', 'geng', 'gong', 'gou', 'gu',
+          'gua', 'guai', 'guan', 'guang', 'gui', 'gun', 'guo', 'ha', 'hai', 'han', 'hang', 'hao', 'he', 'hei', 'hen',
+          'heng', 'hong', 'hou', 'hu', 'hua', 'huai', 'huan', 'huang', 'hui', 'hun', 'huo', 'ji', 'jia', 'jian',
+          'jiang', 'jiao', 'jie', 'jin', 'jing', 'jiong', 'jiu', 'ju', 'juan', 'jue', 'jun', 'ka', 'kai', 'kan', 'kang',
+          'kao', 'ke', 'kei', 'ken', 'keng', 'kong', 'kou', 'ku', 'kua', 'kuai', 'kuan', 'kuang', 'kui', 'kun', 'kuo',
+          'la', 'lai', 'lan', 'lang', 'lao', 'le', 'lei', 'leng', 'li', 'lia', 'lian', 'liang', 'liao', 'lie', 'lin',
+          'ling', 'liu', 'lo', 'long', 'lou', 'lu', 'luan', 'lve', 'lun', 'luo', 'lv', 'ma', 'mai', 'man', 'mang',
+          'mao', 'me', 'mei', 'men', 'meng', 'mi', 'mian', 'miao', 'mie', 'min', 'ming', 'miu', 'mo', 'mou', 'mu', 'na',
+          'nai', 'nan', 'nang', 'nao', 'ne', 'nei', 'nen', 'neng', 'ni', 'nian', 'niang', 'niao', 'nie', 'nin', 'ning',
+          'niu', 'nong', 'nou', 'nu', 'nuan', 'nve', 'nun', 'nuo', 'nv', 'o', 'ou', 'pa', 'pai', 'pan', 'pang', 'pao',
+          'pei', 'pen', 'peng', 'pi', 'pian', 'piao', 'pie', 'pin', 'ping', 'po', 'pou', 'pu', 'qi', 'qia', 'qian',
+          'qiang', 'qiao', 'qie', 'qin', 'qing', 'qiong', 'qiu', 'qu', 'quan', 'que', 'qun', 'ran', 'rang', 'rao', 're',
+          'ren', 'reng', 'ri', 'rong', 'rou', 'ru', 'rua', 'ruan', 'rui', 'run', 'ruo', 'sa', 'sai', 'san', 'sang',
+          'sao', 'se', 'sen', 'seng', 'sha', 'shai', 'shan', 'shang', 'shao', 'she', 'shei', 'shen', 'sheng', 'shi',
+          'shou', 'shu', 'shua', 'shuai', 'shuan', 'shuang', 'shui', 'shun', 'shuo', 'si', 'song', 'sou', 'su', 'suan',
+          'sui', 'sun', 'suo', 'ta', 'tai', 'tan', 'tang', 'tao', 'te', 'ten', 'teng', 'ti', 'tian', 'tiao', 'tie',
+          'ting', 'tong', 'tou', 'tu', 'tuan', 'tui', 'tun', 'tuo', 'wa', 'wai', 'wan', 'wang', 'wei', 'wen', 'weng',
+          'wo', 'wu', 'xi', 'xia', 'xian', 'xiang', 'xiao', 'xie', 'xin', 'xing', 'xiong', 'xiu', 'xu', 'xuan', 'xue',
+          'xun', 'ya', 'yan', 'yang', 'yao', 'ye', 'yi', 'yin', 'ying', 'yo', 'yong', 'you', 'yu', 'yuan', 'yue', 'yun',
+          'za', 'zai', 'zan', 'zang', 'zao', 'ze', 'zei', 'zen', 'zeng', 'zha', 'zhai', 'zhan', 'zhang', 'zhao', 'zhe',
+          'zhei', 'zhen', 'zheng', 'zhi', 'zhong', 'zhou', 'zhu', 'zhua', 'zhuai', 'zhuan', 'zhuang', 'zhui', 'zhun',
+          'zhuo', 'zi', 'zong', 'zou', 'zu', 'zuan', 'zui', 'zun', 'zuo', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
+          'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '0', '1', '2', '3', '4',
+          '5', '6', '7', '8', '9', '#']
+
+
+def DecryptPinyin(py_dataview):
+    py = py_dataview.subview()
+    n = ReadUint16(py) // 2
+    ps = ""
+    for _ in range(n):
+        p = ReadUint16(py)
+        ps += pinyin[p] + "'"
+    return ps[:-1]
+
+
 def DecryptWordsEx(lstr_dataview, p1, p2, p3):
     lstr = lstr_dataview.subview()
     k1 = (p1 + p2) << 2
@@ -244,6 +295,7 @@ def DecryptWordsEx(lstr_dataview, p1, p2, p3):
     for _ in range(n):
         shift = p2 % 8
         ch = ReadUint16(lstr)
+        # print(ch)
         dch = (ch << (16 - (shift % 8)) | (ch >> shift)) & 0xffff
         dch ^= xk
         decwords += struct.pack('<H', dch)
@@ -263,7 +315,7 @@ class DataView(object):
         assert n >= 0
         end = self.pos + n
         assert end <= len(self.buff)
-        data = self.buff[self.pos : end]
+        data = self.buff[self.pos: end]
         self.pos = end
         return data
 
@@ -277,11 +329,14 @@ class DataView(object):
         assert base.buff == self.buff
         return self.pos - base.pos
 
+
 def ReadInt32(b):
     return struct.unpack('<i', b.read(4))[0]
 
+
 def ReadUint32(b):
     return struct.unpack('<I', b.read(4))[0]
+
 
 def ReadUint16(b):
     return struct.unpack('<H', b.read(2))[0]
@@ -364,7 +419,7 @@ if __name__ == '__main__':
 
     total_size = ReadUint32(f2)
     USR_DICT_HEADER_SIZE = 4 + 76
-    assert total_size > 0 and total_size + header_size + config_size + 8 == size - USR_DICT_HEADER_SIZE # assert buff2.1
+    assert total_size > 0 and total_size + header_size + config_size + 8 == size - USR_DICT_HEADER_SIZE  # assert buff2.1
 
     size3_b2 = ReadUint32(f2)
     size4_b2 = ReadUint32(f2)
@@ -397,7 +452,7 @@ if __name__ == '__main__':
 
     usrdict.ds_base = f2
     assert pos_2 + header_size == f2.pos
-        
+
     # User Header
     f_usr = DataView(filedata, size - 0x4c)
     usr_header = UserHeader()
@@ -407,7 +462,8 @@ if __name__ == '__main__':
     fout = open(out_path, 'w')
     all_data = usrdict.GetAllDataWithAttri(0)
     for attr, attr2 in all_data:
-        py = usrdict.GetPys(attr.offset_of(usrdict.ds_base))
+        py = usrdict.GetPys(ReadUint32(attr.subview()))
+        pys = DecryptPinyin(py)
         word_info = AttrWordData()
         word_info.parse(attr2.subview())
         # GetWordData
@@ -416,6 +472,6 @@ if __name__ == '__main__':
         word_base = usrdict.GetData(data_id, word_info.offset)
         # DecryptWordsEx
         word = DecryptWordsEx(word_base, word_info.p1, usr_header.p2, usr_header.p3)
-        fout.write(f'{word.string}\t{word_info.freq}\n')
+        fout.write(f'{word.string}\t{word_info.freq}\t{pys}\n')
         fout.flush()
     fout.close()
